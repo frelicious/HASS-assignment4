@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+
+body { margin: 0 }
+    
+#map {
+    width: 100vw;
+    height: 100vh;
+    }
+.district {
+    stroke-width:2px;
+    z-index:1000;
+}
+.tooltip {
+  position:absolute;
+  z-index: 1000;
+  width: 15%;
+  text-align:center;
+  font-family: 'Raleway',sans-serif;
+  opacity:0.8;
+}
+
+#legend, #mlegend ,#flegend{
+    position: absolute;
+    font-size: 15px; 
+    font-family: 'Raleway',sans-serif;
+    line-height: 1.25;  
+    width: auto;
+    height: 300px;
+    margin-left: 80%;
+    margin-top:-35%;
+    z-index:1000;
+    text-align:center;
+    padding-top:23px;
+    font-weight:bolder;
+    text-shadow: -1px 1px 0 #000,
+	1px 1px 0 #000,
+	1px -1px 0 #000,
+	-1px -1px 0 #000;
+ 
+}
+
+#background_legend {
+    position:absolute;
+    background-color: rgba(000,000,000, 0.7);
+    font-family: 'Raleway',sans-serif;
+    width: 18%;
+    height: 26%;
+    margin-left: 80%;
+    margin-top:-32%;
+    z-index:1000;
+    color:white;
+    text-align:center;
+    padding-top:10px;
+    text-shadow: -1px 1px 0 #000,
+	1px 1px 0 #000,
+	1px -1px 0 #000,
+	-1px -1px 0 #000;
+  font-size:20px;
+}
+
+button {
+  border: none;
+  color: white;
+  padding: 15px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  margin: auto;
+  cursor: pointer;
+  font-family: 'Raleway',sans-serif;
+  font-style:bold;
+}
+
+.mbutton {
+    background-color: #008CBA;
+    } /* red */
+.fbutton {
+    background-color: #FF0000
+    
+    } /* Blue */
+.abutton {
+    background-color:lightgreen;
+
+    }
+
+button {
+    width: 100px;
+    position:relative;
+
+}
+
+h1, #credits {
+    text-align:center;
+    font-family: 'Raleway',sans-serif;
+}
+
+html {
+    background-color:lightcyan;
+}
+
+path:hover {
+  stroke:grey;
+  stroke-width:7px;
+  opacity: 0.8;
+}
+  </style>
+</head>
+<body>
+<!--<svg></svg>-->
+<h1>A choropleth map visualization of the 2020 population in Singapore subdistricts</h1>
+<div id="credits">Data from <a href="www.data.gov.sg">data.gov.sg</a>, cleaned by <a href="https://chi-loong.github.io/HASS02.526/assignments/population2020.csv">Chi-Loong</a>.</div>
+<br>
+<center><button class="abutton" value ="Update" onclick="allpop()" =>All</button>
+<button class="mbutton" value ="Update" onclick="male()" =>Male</button>
+<button class="fbutton" value ="Update" onclick="female()"=>Female</button></center><br>
+<div id="map"></div>
+<div id="districts"></div>
+<div class="tooltip"></div>
+<div id="background_legend">Legend (Based on IQR):</div>
+<svg id="legend"></svg>
+<svg id="mlegend"></svg>
+<svg id="flegend"></svg>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+<script src="https://d3js.org/d3.v6.min.js"></script>
+
+<script>
+// let map = new L.Map("map", {center: [1.347833, 103.809357], zoom: 12}) //Center: Long & Lat.
+//     .addLayer(new L.TileLayer("http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"));
+var m_or_f=0;
+
+function allpop() {
+    m_or_f=0;
+    map_legend.style("opacity", "0");
+    runsvg();
+    legendneeded();
+    //console.log(m_or_f);
+  
+}
+function male() {
+  m_or_f =1;
+  map_legend.style("opacity", "0");
+  runsvg();
+  legendneeded();
+  //console.log(m_or_f);
+}
+function female() {
+  m_or_f=2; 
+  map_legend.style("opacity", "0");
+  runsvg();
+  legendneeded();
+  //console.log(m_or_f);
+}
+    let tiles = new L.tileLayer('https://maps-{s}.onemap.sg/v3/Default/{z}/{x}/{y}.png', {
+  detectRetina: true,
+  maxZoom: 18,
+  minZoom: 11,
+  //Do not remove this attribution
+  attribution: '<img src="https://docs.onemap.sg/maps/images/oneMap64-01.png" style="height:20px;width:20px;">' +
+               'New OneMap | Map data © contributors, <a href="http://SLA.gov.sg">Singapore Land Authority</a>'
+});
+
+
+var map = new L.Map("map", {
+    center: [1.347833, 103.809357], 
+    zoom: 11,
+    maxBounds: L.latLngBounds(L.latLng(1.1, 103.5), L.latLng(1.5, 104.3))
+    })
+    .addLayer(tiles);
+
+    let svg = d3.select(map.getPanes().overlayPane)
+    .append("svg")
+    .attr("width", window.innerWidth)
+    .attr("height", window.innerHeight)
+    // .attr("width", 1000)
+    // .attr("height", 600)
+        .append("g")
+        .attr("id","svgLayer")
+        .attr("class", "leaflet-zoom-hide");
+        
+
+function projectPoint(x, y) {
+  var point = map.latLngToLayerPoint(new L.LatLng(y, x));
+  this.stream.point(point.x, point.y);
+}
+
+let projection = d3.geoTransform({point: projectPoint});
+let geopath = d3.geoPath().projection(projection);
+
+
+
+var alabels = ['0 - 1495 (Very Low)', '1496 - 5890 (Low)', '5891 - 11050 (Moderate)', '11051 - 15165 (High)', '15166 - 134210 (Very High)'];
+var mlabels =['0-60 (Very Low)', '61 - 1445 (Low)', '1446 - 5245 (Moderate)','5246 - 12810 (High)', '12811 - 63960 (Very High)'];
+var flabels =['0-40 (Very Low)', '41 - 1588 (Low)', '1589 - 5780 (Moderate)', '5781 - 13113 (High)', '13114 - 67010 (Very High)'];
+    //legend
+    var map_alegend = d3.select("#legend");
+    var map_mlegend = d3.select ("#mlegend");
+    var map_flegend = d3.select("#flegend");
+    var map_legend=d3.select("legend");
+    map_legend.style("opacity", "1");
+    var color = d3.scaleOrdinal()
+    .domain(alabels)
+     .range(d3.schemeBrBG[5]);
+     var size = 20
+
+
+
+
+function legendneeded() {
+    map_legend.style("opacity", "0");
+    if (m_or_f==2) {
+        
+        map_legend=map_flegend;
+        map_legend.style("opacity", "1");
+        display_labels=flabels;
+        display_color=d3.schemeReds[5];
+        console.log("run");
+    }
+    else if (m_or_f==1) {
+        //map_legend.style("opacity", "0");
+        map_legend=map_mlegend;
+        map_legend.style("opacity", "1");
+        display_labels=mlabels;
+        display_color=d3.schemeBlues[5];
+        console.log("run");
+    }
+    else {
+        //map_legend.style("opacity", "0");
+        map_legend=map_alegend;
+        map_legend.style("opacity", "1");
+        display_labels=alabels;
+        display_color=d3.schemeBrBG[5];
+    }
+
+   
+    var color = d3.scaleOrdinal()
+    .domain(display_labels)
+     .range(display_color);
+     var size = 20
+
+
+
+map_legend.selectAll("mydots")
+  .data(display_labels)
+  .enter()
+  .append("rect")
+    .attr("x", 35)
+    .attr("y", function(d,i){ return 65 + i*(size+5)}) // 100 is where the first dot appears. 25 is the distance between dots
+    .attr("width", size)
+    .attr("height", size)
+    .style("fill", function(d){ return color(d)})
+    .style("opacity", "1");
+
+map_legend.selectAll("mylabels")
+  .data(display_labels)
+  .enter()
+  .append("text")
+    .attr("x", 35 + size*1.2)
+    .attr("y", function(d,i){ return 65 + i*(size+5) + (size/2)}) // 100 is where the first dot appears. 25 is the distance between dots
+    .style("fill", function(d){ return color(d)})
+    .text(function(d){ return d})
+    .attr("text-anchor", "left")
+    .style("alignment-baseline", "middle")
+    .style("opacity", "1");
+
+}
+legendneeded();
+
+// let width = 1000, height = 600;
+
+// let svg = d3.select("svg")
+//     .attr("viewBox", "0 0 " + width + " " + height)
+
+// // Load external data and boot
+//intial svg layer. 
+
+//svg.selectAll("div").remove();
+Promise.all([d3.json("sgmap.json"), d3.csv("population2020_gendered.csv")]).then(data => {
+
+// console.log(data[0]);
+population2020 = data[1];
+sgmap = data[0];
+
+// // Map and projection
+// var projection = d3.geoMercator()
+//     .center([103.851959, 1.290270])
+//     .fitExtent([[20, 20], [980, 580]], data[0]);
+
+// let geopath = d3.geoPath().projection(projection);
+
+//color
+var colorScale = d3.scaleThreshold()
+  .domain([1495, 5890, 11050, 15165, 134210])
+  .range(d3.schemeBrBG[5]);
+
+//for loop to transfer the data
+for(i=0; i<population2020.length; i++){
+          // grab subzone name
+          var dataSubz = population2020[i].subzone;
+
+          //grab data value, and convert from string to float
+          var dataValue = parseFloat(population2020[i].Population);
+          //find the corresponding state inside the GeoJSON
+          for(var n = 0; n < sgmap.features.length; n++){
+
+            // properties name gets the states name
+            var jsonSubz = sgmap.features[n].properties.Name;
+            // if statment to merge by name of state
+            if(dataSubz == jsonSubz){
+              //Copy the data value into the JSON
+              // basically creating a new value column in JSON data
+              sgmap.features[n].properties.value = dataValue;
+
+              //stop looking through the JSON
+              break;
+            }
+            
+          }
+        }
+
+  svg.append("g")
+    .attr("id", "districts")
+    .selectAll("path")
+    .data(sgmap.features)
+    .enter()
+    .append("path")
+    .attr("d", geopath)
+    .classed("leaflet-interactive", true)
+    .attr("fill", d=> {
+    return colorScale(d.properties.value);}
+      )
+    .attr("stroke", "grey")
+    .on("mouseover", (event, d) => {
+    displayval=d.properties.value;
+      if (displayval>0) {
+        d3.select(".tooltip")
+        .text(d.properties.Name +": "+ displayval)
+        .style("position", "absolute")
+        .style("background", "#fff")
+        .style("left", (event.pageX + 15) + "px")
+        .style("top", (event.pageY + 15) + "px")
+        .style("z-index", "1000");
+        d3.select(svg.selectAll("path")
+        .attr("opacity", 1));
+      }
+      else {
+        d3.select(".tooltip")
+        .text(d.properties.Name +": "+ "undefined")
+        .style("position", "absolute")
+        .style("background", "#fff")
+        .style("left", (event.pageX + 15) + "px")
+        .style("top", (event.pageY + 15) + "px")
+        .style("z-index", "1000");
+        d3.select(svg.selectAll("path")
+        .attr("opacity", 1));
+      } })
+    \
+
+d3.select("#legend").selectAll("mydots")
+  .data(alabels)
+  .enter()
+  .append("rect")
+    .attr("x", 35)
+    .attr("y", function(d,i){ return 65 + i*(size+5)}) // 100 is where the first dot appears. 25 is the distance between dots
+    .attr("width", size)
+    .attr("height", size)
+    .style("fill", function(d){ return color(d)})
+    .style("opacity", "1");
+
+
+d3.select("#legend").selectAll("mylabels")
+  .data(alabels)
+  .enter()
+  .append("text")
+    .attr("x", 35 + size*1.2)
+    .attr("y", function(d,i){ return 65 + i*(size+5) + (size/2)}) // 100 is where the first dot appears. 25 is the distance between dots
+    .style("fill", function(d){ return color(d)})
+    .text(function(d){ return d})
+    .attr("text-anchor", "left")
+    .style("alignment-baseline", "middle")
+    .style("opacity", "1");
+
+
+    map.on('zoomend', onZoom);
+
+function onZoom() {
+
+
+
+
+    var bounds = geopath.bounds(sgmap),
+        topLeft = bounds[0],
+        bottomRight = bounds[1];
+
+    var svg = d3.select(map.getPanes().overlayPane).select("svg");
+        
+    svg.attr("width", bottomRight[0] - topLeft[0])
+       .attr("height", bottomRight[1] - topLeft[1])
+       .style("left", topLeft[0] + "px")
+       .style("top", topLeft[1] + "px");
+       
+    svg.select("g").attr("transform", "translate(" + -topLeft[0] + "," + -topLeft[1] + ")");
+
+    d3.select("g#districts").selectAll("path")
+       .attr("d", geopath);
+}
+        
+
+});
+
+//to implement new svg layer
+function runsvg() {
+    //delete the old layer
+map_legend.selectAll("*").remove();
+svg.selectAll("*").remove();
+
+Promise.all([d3.json("sgmap.json"), d3.csv("population2020_gendered.csv")]).then(data => {
+
+// console.log(data[0]);
+population2020 = data[1];
+sgmap = data[0];
+
+// // Map and projection
+// var projection = d3.geoMercator()
+//     .center([103.851959, 1.290270])
+//     .fitExtent([[20, 20], [980, 580]], data[0]);
+
+// let geopath = d3.geoPath().projection(projection);
+
+//color
+var colorScale = d3.scaleThreshold()
+  .domain([1495,5890, 11050, 15165, 134210])
+  .range(d3.schemeBrBG[5]);
+
+var mcolorScale = d3.scaleThreshold()
+  .domain([60, 1445, 5245, 12810, 63960])
+  .range(d3.schemeBlues[5]);
+
+  var fcolorScale = d3.scaleThreshold()
+  .domain([40, 1588, 5780, 13113, 67010])
+  .range(d3.schemeReds[5]);
+
+//for loop to transfer the data
+for(i=0; i<population2020.length; i++){
+          // grab subzone name
+          var dataSubz = population2020[i].subzone;
+
+          //grab data value, and convert from string to float
+          var dataValue = parseFloat(population2020[i].Population);
+          var dataValue_male = parseFloat(population2020[i].PopMale);
+          var dataValue_female = parseFloat(population2020[i].PopFemale);
+          //find the corresponding state inside the GeoJSON
+          for(var n = 0; n < sgmap.features.length; n++){
+
+            // properties name gets the states name
+            var jsonSubz = sgmap.features[n].properties.Name;
+            // if statment to merge by name of state
+            if(dataSubz == jsonSubz){
+              //Copy the data value into the JSON
+              // basically creating a new value column in JSON data
+              sgmap.features[n].properties.mvalue = dataValue_male;
+              sgmap.features[n].properties.fvalue = dataValue_female;
+              sgmap.features[n].properties.value = dataValue;
+
+              //stop looking through the JSON
+              break;
+            }
+            
+          }
+        }
+
+  svg.append("g")
+    .attr("id", "districts")
+    .selectAll("path")
+    .data(sgmap.features)
+    .enter()
+    .append("path")
+    .attr("d", geopath)
+    .classed("leaflet-interactive", true)
+    .attr("fill", d=> {
+      if (m_or_f==2) {
+        return fcolorScale(d.properties.fvalue);
+      }
+      else if (m_or_f==1) 
+      {return mcolorScale(d.properties.mvalue);}
+      else {return colorScale(d.properties.value);}
+      })
+    .attr("stroke", "grey")
+    .on("mouseover", (event, d) => {
+        if (m_or_f==2) {displayval=d.properties.fvalue;}
+        else if (m_or_f==1) {displayval=d.properties.mvalue;}
+        else {displayval=d.properties.value;}
+      if (displayval>0) {
+        d3.select(".tooltip")
+        .text(d.properties.Name +": "+ displayval)
+        .style("position", "absolute")
+        .style("background", "#fff")
+        .style("left", (event.pageX + 15) + "px")
+        .style("top", (event.pageY + 15) + "px")
+        .style("z-index", "1000");
+        d3.select(svg.selectAll("path")
+        .attr("opacity", 1));
+      }
+      else {
+        d3.select(".tooltip")
+        .text(d.properties.Name +": "+ "undefined")
+        .style("position", "absolute")
+        .style("background", "#fff")
+        .style("left", (event.pageX + 15) + "px")
+        .style("top", (event.pageY + 15) + "px")
+        .style("z-index", "1000");
+        d3.select(svg.selectAll("path")
+        .attr("opacity", 1));
+      } })
+    .on("mouseout", (event, d) => {
+        d3.select(".tooltip")
+        .text("");
+        d3.select(svg.selectAll("path")
+        .attr("opacity", 1));
+        d3.select(event.currentTarget)
+    });
+
+
+
+
+    map.on('zoomend', onZoom);
+
+function onZoom() {
+
+
+
+
+    var bounds = geopath.bounds(sgmap),
+        topLeft = bounds[0],
+        bottomRight = bounds[1];
+
+    var svg = d3.select(map.getPanes().overlayPane).select("svg");
+        
+    svg.attr("width", bottomRight[0] - topLeft[0])
+       .attr("height", bottomRight[1] - topLeft[1])
+       .style("left", topLeft[0] + "px")
+       .style("top", topLeft[1] + "px");
+       
+    svg.select("g").attr("transform", "translate(" + -topLeft[0] + "," + -topLeft[1] + ")");
+
+    d3.select("g#districts").selectAll("path")
+       .attr("d", geopath);
+}
+        
+
+});}
+
+  
+
+
+
+         
+
+</script>
+
+</body>
+</html>
